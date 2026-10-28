@@ -1,0 +1,54 @@
+import { useCallback, useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
+import { useSelector } from 'react-redux';
+import api, { getErrorMessage } from '../services/api';
+import PageHeader from '../components/PageHeader';
+import StatCard from '../components/StatCard';
+import StatusBadge from '../components/StatusBadge';
+import Loading from '../components/Loading';
+import EmptyState from '../components/EmptyState';
+import Feedback from '../components/Feedback';
+
+function timeLabel(value) { return value ? new Intl.DateTimeFormat('en-IN', { hour: '2-digit', minute: '2-digit' }).format(new Date(value)) : '—'; }
+function greeting() { const hour = new Date().getHours(); return hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening'; }
+
+export default function Dashboard() {
+  const { user } = useSelector((state) => state.auth);
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const load = useCallback(async () => {
+    setLoading(true); setError('');
+    try { const response = await api.get('/dashboard'); setData(response.data); }
+    catch (err) { setError(getErrorMessage(err, 'Unable to load dashboard statistics.')); }
+    finally { setLoading(false); }
+  }, []);
+  useEffect(() => { load(); }, [load]);
+
+  const hr = data?.role === 'HR';
+  const manager = data?.role === 'MANAGER';
+  const pendingEmployeeLeaves = data?.leaves?.filter((leave) => leave.status === 'PENDING').length || 0;
+  return <>
+    <PageHeader eyebrow={user?.role === 'HR' ? 'HR ADMINISTRATOR' : user?.role === 'MANAGER' ? 'TEAM LEADERSHIP' : 'EMPLOYEE WORKSPACE'} title="Overview" description="A quick view of the people, updates, and workday activity that matter to you." action={<button className="btn btn-outline-secondary" onClick={load}><i className="bi bi-arrow-clockwise me-2" />Refresh</button>} />
+    <div className="welcome-banner"><div className="welcome-copy"><span className="welcome-kicker">YOUR PEOPLE WORKSPACE</span><h2>{greeting()}, {user?.name?.split(' ')[0] || 'there'}.</h2><p>{hr ? 'Here is what is happening across your organization today.' : manager ? 'Stay close to your team’s attendance, leave requests, and learning.' : 'Keep your day in sync. Your attendance, leave requests, and updates live here.'}</p></div><div className="welcome-pill"><i className="bi bi-check-circle-fill" /> {new Date().toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' })}</div></div>
+    <Feedback>{error}</Feedback>
+    {loading && !data ? <Loading label="Gathering your workspace summary…" /> : data && <>
+      {hr && <div className="stats-grid"><StatCard label="Active employees" value={data.stats.totalEmployees} icon="bi-people" /><StatCard label="Active managers" value={data.stats.totalManagers} icon="bi-person-workspace" tone="purple" /><StatCard label="Checked in today" value={data.stats.checkedInToday} hint="From saved attendance records" icon="bi-person-check" tone="green" /><StatCard label="Leave requests pending" value={data.stats.pendingLeaves} icon="bi-calendar2-week" tone="orange" /></div>}
+      {manager && <div className="stats-grid"><StatCard label="Team members" value={data.stats.teamMembers} icon="bi-people" /><StatCard label="Checked in today" value={data.stats.checkedInToday} icon="bi-person-check" tone="green" /><StatCard label="Not checked in" value={data.stats.notCheckedIn} hint="Not classified as absent" icon="bi-clock-history" tone="orange" /><StatCard label="Pending leave requests" value={data.stats.pendingLeaves} icon="bi-calendar2-week" tone="purple" /></div>}
+      {!hr && !manager && <><div className="stats-grid"><StatCard label="Today's attendance" value={data.todayAttendance ? (data.todayAttendance.checkOut ? 'Complete' : 'Checked in') : 'Not started'} icon="bi-clock-history" tone={data.todayAttendance ? 'green' : 'orange'} /><StatCard label="Pending leave requests" value={pendingEmployeeLeaves} icon="bi-calendar2-week" tone="purple" /><StatCard label="Unread notifications" value={data.unreadNotifications} icon="bi-bell" tone="blue" /><StatCard label="Training programs" value={data.trainings?.length || 0} icon="bi-mortarboard" tone="green" /></div><div className="today-check-card"><div className="d-flex align-items-center gap-3"><div className="check-icon"><i className="bi bi-stopwatch" /></div><div><strong>Today's attendance</strong><span>{data.todayAttendance ? `Check-in ${timeLabel(data.todayAttendance.checkIn)}${data.todayAttendance.checkOut ? ` · Check-out ${timeLabel(data.todayAttendance.checkOut)}` : ' · Check out when your workday ends'}` : 'No check-in recorded yet for today.'}</span></div></div><Link to="/attendance" className="btn btn-primary btn-sm">Open attendance <i className="bi bi-arrow-right ms-1" /></Link></div></>}
+      <div className="dashboard-grid">
+        <section className="card-panel"><div className="panel-heading"><div><h2>{hr ? 'Recent leave activity' : manager ? 'Team leave activity' : 'My recent leave requests'}</h2><p>{hr ? 'Recent submissions and their current status.' : manager ? 'Recent leave decisions across your team.' : 'Track your requests and reviewer decisions.'}</p></div><Link to="/leaves" className="small fw-semibold">View all <i className="bi bi-arrow-up-right ms-1" /></Link></div>
+          {hr || manager ? data.recentLeaves?.length ? <div className="dashboard-list">{data.recentLeaves.map((leave) => <div className="dashboard-list-row" key={leave._id}><div className="list-row-icon"><i className="bi bi-calendar2-check" /></div><div className="list-row-content"><strong>{leave.employee?.user?.name || 'Employee'} · {leave.leaveType}</strong><span>{leave.startDate}{leave.endDate !== leave.startDate ? ` to ${leave.endDate}` : ''}</span></div><StatusBadge status={leave.status} /></div>)}</div> : <EmptyState title="No leave activity yet" text="Requests will appear here as employees submit them." /> : data.leaves?.length ? <div className="dashboard-list">{data.leaves.map((leave) => <div className="dashboard-list-row" key={leave._id}><div className="list-row-icon"><i className="bi bi-calendar2-check" /></div><div className="list-row-content"><strong>{leave.leaveType}</strong><span>{leave.startDate}{leave.endDate !== leave.startDate ? ` to ${leave.endDate}` : ''}{leave.decisionComment ? ` · ${leave.decisionComment}` : ''}</span></div><StatusBadge status={leave.status} /></div>)}</div> : <EmptyState title="No leave requests yet" text="Your submitted leave requests will show up here." />}
+        </section>
+        <section className="card-panel"><div className="panel-heading"><div><h2>Quick actions</h2><p>Jump into a common task.</p></div></div><div className="quick-actions">{(hr ? [{ to: '/employees', icon: 'bi-person-plus', title: 'Manage people', hint: 'Directory & roles' }, { to: '/leaves', icon: 'bi-calendar-check', title: 'Review leave', hint: 'Approvals queue' }, { to: '/announcements', icon: 'bi-megaphone', title: 'Post an update', hint: 'Share an announcement' }, { to: '/reports', icon: 'bi-graph-up', title: 'View reports', hint: 'People analytics' }] : manager ? [{ to: '/employees', icon: 'bi-people', title: 'View my team', hint: 'Assigned team members' }, { to: '/leaves', icon: 'bi-calendar-check', title: 'Review leave', hint: 'Decide pending requests' }, { to: '/attendance', icon: 'bi-clock-history', title: 'Team attendance', hint: 'Review check-ins' }, { to: '/training', icon: 'bi-mortarboard', title: 'Training programs', hint: 'Plan team learning' }] : [{ to: '/attendance', icon: 'bi-clock-history', title: 'Attendance', hint: 'Check in or out' }, { to: '/leaves', icon: 'bi-calendar-check', title: 'Request leave', hint: 'Apply and track status' }, { to: '/training', icon: 'bi-mortarboard', title: 'Explore training', hint: 'Find a learning session' }, { to: '/profile', icon: 'bi-person-badge', title: 'My profile', hint: 'Update contact details' }]).map((action) => <Link className="quick-action" to={action.to} key={action.to}><i className={`bi ${action.icon}`} /><div><strong>{action.title}</strong><span>{action.hint}</span></div></Link>)}</div>
+          {hr ? <div className="panel-heading"><div><h2>Organization snapshot</h2><p>Current saved data</p></div></div> : null}
+          {hr && <div className="dashboard-list"><div className="dashboard-list-row"><div className="list-row-icon"><i className="bi bi-calendar2-check" /></div><div className="list-row-content"><strong>Approved leave requests</strong><span>Recorded approvals</span></div><strong>{data.stats.approvedLeaves}</strong></div><div className="dashboard-list-row"><div className="list-row-icon"><i className="bi bi-person-clock" /></div><div className="list-row-content"><strong>Not checked in today</strong><span>Not automatically counted as absent</span></div><strong>{data.stats.notCheckedIn}</strong></div></div>}
+        </section>
+      </div>
+      <div className="dashboard-grid section-gap">
+        <section className="card-panel"><div className="panel-heading"><div><h2>Latest announcements</h2><p>Updates shared with the organization.</p></div><Link to="/announcements" className="small fw-semibold">All updates <i className="bi bi-arrow-up-right ms-1" /></Link></div>{data.recentAnnouncements?.length ? <div className="dashboard-list">{data.recentAnnouncements.map((announcement) => <div className="dashboard-list-row" key={announcement._id}><div className="list-row-icon"><i className="bi bi-megaphone" /></div><div className="list-row-content"><strong>{announcement.title}</strong><span>{announcement.category} · {new Date(announcement.publishedAt).toLocaleDateString('en-IN')}</span></div></div>)}</div> : <EmptyState title="No announcements published" text="New organization updates will appear here." />}</section>
+        <section className="card-panel"><div className="panel-heading"><div><h2>{manager ? 'Upcoming training' : 'Learning & growth'}</h2><p>Available programs and next steps.</p></div><Link to="/training" className="small fw-semibold">Explore <i className="bi bi-arrow-up-right ms-1" /></Link></div>{(data.upcomingTrainings || data.trainings || []).length ? <div className="dashboard-list">{(data.upcomingTrainings || data.trainings || []).slice(0, 4).map((training) => <div className="dashboard-list-row" key={training._id}><div className="list-row-icon"><i className="bi bi-mortarboard" /></div><div className="list-row-content"><strong>{training.title}</strong><span>{training.startDate} · {training.mode}</span></div>{training.enrolled && <StatusBadge status={training.enrollmentStatus || 'ENROLLED'} />}</div>)}</div> : <EmptyState title="No programs available" text="Training opportunities will appear here when published." />}</section>
+      </div>
+    </>}
+  </>;
+}

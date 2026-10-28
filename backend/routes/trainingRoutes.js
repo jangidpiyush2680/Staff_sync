@@ -1,0 +1,10 @@
+const router = require('express').Router();
+const controller = require('../controllers/trainingController');
+const { protect, allowRoles } = require('../middleware/auth');
+router.use(protect);
+router.get('/', controller.listTrainings);
+router.post('/', allowRoles('HR', 'MANAGER'), controller.createTraining);
+router.put('/:id', allowRoles('HR', 'MANAGER'), controller.updateTraining);
+router.post('/:id/enroll', controller.enroll);
+router.post('/:id/complete', controller.completeTraining);
+module.exports = router;

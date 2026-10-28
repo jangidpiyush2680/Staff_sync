@@ -1,0 +1,12 @@
+const router = require('express').Router();
+const controller = require('../controllers/employeeController');
+const { protect, allowRoles } = require('../middleware/auth');
+router.use(protect);
+router.get('/profile/me', controller.getOwnProfile);
+router.put('/profile/me', controller.updateOwnProfile);
+router.get('/', controller.listEmployees);
+router.get('/:id', controller.getEmployee);
+router.post('/', allowRoles('HR'), controller.createEmployee);
+router.put('/:id', allowRoles('HR'), controller.updateEmployee);
+router.patch('/:id/status', allowRoles('HR'), controller.setEmployeeStatus);
+module.exports = router;
